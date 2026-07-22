@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles/styles.css">
+    <title>Endpoint-Manager</title>
+    <script src="scripts/script.js" defer></script>
+</head>
+    <body>
+        
+        <nav>
+            <h1>Endpoint-Manager</h1>
+            <input id="endpoint-search" type="search" placeholder="Search..." aria-label="Search endpoints" />
+        </nav>
+        <div id="content-wrapper">
+            <div id="endpoint-wrapper">
+                <table class="endpoint-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Username</th>
+                            <th scope="col">Device name</th>
+                            <th scope="col">IP</th>
+                            <th scope="col">RustDesk ID</th>
+                        </tr>
+                    </thead>
+                    <tbody id="endpoint-table-body">
+                        <tr class="empty-row">
+                            <td colspan="4">Loading endpoints...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </body>
+</html>
