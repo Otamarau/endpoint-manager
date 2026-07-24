@@ -25,7 +25,7 @@ const databasePath = path.resolve(
     path.join(os.homedir(), 'rustdesk', 'data', 'db_v2.sqlite3')
 );
 const threatDownBaseUrl = 'https://api.threatdown.com';
-const sitePasscode = process.env.SITE_PASSCODE;
+const sitePasscodeHash = process.env.SITE_PASSCODE_HASH;
 const authenticatedSessions = new Map();
 const sessionLifetimeMs = 8 * 60 * 60 * 1000;
 const unlockAttempts = new Map();
@@ -255,11 +255,63 @@ function readCookie(request, name) {
     return '';
 }
 
+function parsePasscodeHash(value) {
+    const [algorithm, costText, blockSizeText, parallelizationText, saltText, hashText] =
+        String(value || '').split('$');
+    const cost = Number(costText);
+    const blockSize = Number(blockSizeText);
+    const parallelization = Number(parallelizationText);
+
+    if (
+        algorithm !== 'scrypt' ||
+        !Number.isInteger(cost) ||
+        !Number.isInteger(blockSize) ||
+        !Number.isInteger(parallelization) ||
+        !saltText ||
+        !hashText
+    ) {
+        return null;
+    }
+
+    try {
+        return {
+            cost,
+            blockSize,
+            parallelization,
+            salt: Buffer.from(saltText, 'base64url'),
+            expectedHash: Buffer.from(hashText, 'base64url')
+        };
+    } catch {
+        return null;
+    }
+}
+
 function passcodesMatch(submittedPasscode) {
-    if (!sitePasscode || typeof submittedPasscode !== 'string') return false;
-    const expected = Buffer.from(sitePasscode);
-    const submitted = Buffer.from(submittedPasscode);
-    return expected.length === submitted.length && crypto.timingSafeEqual(expected, submitted);
+    return new Promise((resolve) => {
+        const parsedHash = parsePasscodeHash(sitePasscodeHash);
+        if (!parsedHash || typeof submittedPasscode !== 'string') {
+            return resolve(false);
+        }
+
+        crypto.scrypt(
+            submittedPasscode,
+            parsedHash.salt,
+            parsedHash.expectedHash.length,
+            {
+                N: parsedHash.cost,
+                r: parsedHash.blockSize,
+                p: parsedHash.parallelization,
+                maxmem: 64 * 1024 * 1024
+            },
+            (error, submittedHash) => {
+                resolve(
+                    !error &&
+                    submittedHash.length === parsedHash.expectedHash.length &&
+                    crypto.timingSafeEqual(submittedHash, parsedHash.expectedHash)
+                );
+            }
+        );
+    });
 }
 
 function activeUnlockAttempt(request) {
@@ -332,9 +384,9 @@ async function generateInventory() {
 
 app.use(express.json({ limit: '2kb' }));
 
-app.post('/api/unlock', (request, response) => {
-    if (!sitePasscode) {
-        return response.status(503).json({ error: 'SITE_PASSCODE is not configured.' });
+app.post('/api/unlock', async (request, response) => {
+    if (!parsePasscodeHash(sitePasscodeHash)) {
+        return response.status(503).json({ error: 'SITE_PASSCODE_HASH is not configured correctly.' });
     }
 
     const { clientIp, attempt } = activeUnlockAttempt(request);
@@ -342,7 +394,7 @@ app.post('/api/unlock', (request, response) => {
         return rejectRateLimited(response, attempt.resetAt);
     }
 
-    if (!passcodesMatch(request.body?.passcode)) {
+    if (!await passcodesMatch(request.body?.passcode)) {
         const updatedAttempt = {
             failures: (attempt?.failures || 0) + 1,
             resetAt: attempt?.resetAt || Date.now() + unlockWindowMs
