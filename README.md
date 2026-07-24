@@ -82,6 +82,8 @@ Configuration is loaded from `.env` in the project directory.
 | `PORT` | No | HTTPS port. Defaults to `3000`. |
 | `HTTPS_CERT_PATH` | No | TLS certificate path. Defaults to `certs/localhost-cert.pem`. |
 | `HTTPS_KEY_PATH` | No | TLS private key path. Defaults to `certs/localhost-key.pem`. |
+| `UNLOCK_MAX_ATTEMPTS` | No | Failed unlock attempts allowed per client IP. Defaults to `5`. |
+| `UNLOCK_WINDOW_MINUTES` | No | Unlock rate-limit window in minutes. Defaults to `15`. |
 | `RUSTDESK_DB_PATH` | For RustDesk | Absolute path to the RustDesk `db_v2.sqlite3` database. |
 | `THREATDOWN_CLIENT_ID` | For ThreatDown | ThreatDown OAuth client ID. |
 | `THREATDOWN_CLIENT_SECRET` | For ThreatDown | ThreatDown OAuth client secret. |

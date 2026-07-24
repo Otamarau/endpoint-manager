@@ -9,6 +9,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const app = express();
+app.set('trust proxy', 'loopback');
 const port = Number(process.env.PORT) || 3000;
 const certificatePath = path.resolve(
     process.env.HTTPS_CERT_PATH || path.join(__dirname, 'certs', 'localhost-cert.pem')
@@ -27,6 +28,9 @@ const threatDownBaseUrl = 'https://api.threatdown.com';
 const sitePasscode = process.env.SITE_PASSCODE;
 const authenticatedSessions = new Map();
 const sessionLifetimeMs = 8 * 60 * 60 * 1000;
+const unlockAttempts = new Map();
+const unlockMaxAttempts = Math.max(Number(process.env.UNLOCK_MAX_ATTEMPTS) || 5, 1);
+const unlockWindowMs = Math.max(Number(process.env.UNLOCK_WINDOW_MINUTES) || 15, 1) * 60 * 1000;
 let threatDownToken = null;
 let threatDownTokenExpiresAt = 0;
 
@@ -258,6 +262,26 @@ function passcodesMatch(submittedPasscode) {
     return expected.length === submitted.length && crypto.timingSafeEqual(expected, submitted);
 }
 
+function activeUnlockAttempt(request) {
+    const clientIp = request.ip || request.socket.remoteAddress || 'unknown';
+    const attempt = unlockAttempts.get(clientIp);
+
+    if (attempt && attempt.resetAt > Date.now()) {
+        return { clientIp, attempt };
+    }
+
+    unlockAttempts.delete(clientIp);
+    return { clientIp, attempt: null };
+}
+
+function rejectRateLimited(response, resetAt) {
+    const retryAfterSeconds = Math.max(Math.ceil((resetAt - Date.now()) / 1000), 1);
+    response.setHeader('Retry-After', retryAfterSeconds);
+    return response.status(429).json({
+        error: 'Too many incorrect passcode attempts. Try again later.'
+    });
+}
+
 function requireAuthentication(request, response, next) {
     const sessionId = readCookie(request, 'endpoint_session');
     const expiresAt = authenticatedSessions.get(sessionId);
@@ -313,10 +337,26 @@ app.post('/api/unlock', (request, response) => {
         return response.status(503).json({ error: 'SITE_PASSCODE is not configured.' });
     }
 
+    const { clientIp, attempt } = activeUnlockAttempt(request);
+    if (attempt?.failures >= unlockMaxAttempts) {
+        return rejectRateLimited(response, attempt.resetAt);
+    }
+
     if (!passcodesMatch(request.body?.passcode)) {
+        const updatedAttempt = {
+            failures: (attempt?.failures || 0) + 1,
+            resetAt: attempt?.resetAt || Date.now() + unlockWindowMs
+        };
+        unlockAttempts.set(clientIp, updatedAttempt);
+
+        if (updatedAttempt.failures >= unlockMaxAttempts) {
+            return rejectRateLimited(response, updatedAttempt.resetAt);
+        }
+
         return response.status(401).json({ error: 'Incorrect passcode.' });
     }
 
+    unlockAttempts.delete(clientIp);
     const sessionId = crypto.randomBytes(32).toString('hex');
     authenticatedSessions.set(sessionId, Date.now() + sessionLifetimeMs);
     response.setHeader(
