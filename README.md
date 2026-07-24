@@ -48,13 +48,27 @@ matching records using their device name or IP address.
    Copy-Item .env.example .env
    ```
 
-4. Start the application:
+4. Generate a self-signed HTTPS certificate (PowerShell 7 or newer):
+
+   ```powershell
+   ./scripts/generate-self-signed-cert.ps1
+   ```
+
+   To issue it for a specific internal DNS name:
+
+   ```powershell
+   ./scripts/generate-self-signed-cert.ps1 -DnsName endpoints.oldmac.com.au
+   ```
+
+5. Start the application:
 
    ```sh
    npm start
    ```
 
-5. Open `http://localhost:3000` and enter the configured site passcode.
+6. Open `https://localhost:3000` and enter the configured site passcode. Your
+   browser will show a warning until you explicitly trust the self-signed
+   certificate.
 
 For development with automatic server restarts, run `npm run dev`.
 
@@ -65,7 +79,9 @@ Configuration is loaded from `.env` in the project directory.
 | Variable | Required | Description |
 | --- | --- | --- |
 | `SITE_PASSCODE` | Yes | Passcode required before endpoint data can be viewed. |
-| `PORT` | No | HTTP port. Defaults to `3000`. |
+| `PORT` | No | HTTPS port. Defaults to `3000`. |
+| `HTTPS_CERT_PATH` | No | TLS certificate path. Defaults to `certs/localhost-cert.pem`. |
+| `HTTPS_KEY_PATH` | No | TLS private key path. Defaults to `certs/localhost-key.pem`. |
 | `RUSTDESK_DB_PATH` | For RustDesk | Absolute path to the RustDesk `db_v2.sqlite3` database. |
 | `THREATDOWN_CLIENT_ID` | For ThreatDown | ThreatDown OAuth client ID. |
 | `THREATDOWN_CLIENT_SECRET` | For ThreatDown | ThreatDown OAuth client secret. |
@@ -93,13 +109,13 @@ is written to `data/rustdesk_inventory.json`; this file is ignored by Git.
 This project is best suited to an internal network. The built-in passcode is a
 small access-control layer, not a replacement for production authentication.
 Sessions are stored in memory and are lost when the server restarts. The session
-cookie is HTTP-only and same-site, but it is not marked `Secure` because the
-development server uses HTTP.
+cookie is HTTP-only, same-site, and restricted to secure HTTPS requests.
 
-For access outside a trusted network, place the application behind an HTTPS
-reverse proxy and add appropriate authentication, firewall rules, and rate
-limiting. Never commit `.env`, SQLite databases, or generated inventory files;
-the included `.gitignore` excludes them.
+Self-signed certificates encrypt traffic but do not establish public trust. For
+access outside a trusted network, use a certificate issued by a trusted CA and
+add appropriate authentication, firewall rules, and rate limiting. Never commit
+`.env`, private keys, SQLite databases, or generated inventory files; the
+included `.gitignore` excludes them.
 
 ## Project structure
 
@@ -108,6 +124,7 @@ public/                 Browser interface
   scripts/script.js     Inventory rendering and search
   styles/styles.css     Responsive styling
 server.js               Express server and inventory integrations
+scripts/                Certificate generation utility
 .env.example            Configuration template
 ```
 
@@ -121,4 +138,3 @@ server.js               Express server and inventory integrations
   or rely on a valid RustDesk database as the available inventory source.
 - **No endpoints load**: Check the server output. The response fails only when
   neither source returns any endpoints.
-

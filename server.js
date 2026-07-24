@@ -3,12 +3,19 @@ require('dotenv').config({ quiet: true });
 const express = require('express');
 const Database = require('better-sqlite3');
 const fs = require('node:fs');
+const https = require('node:https');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
+const certificatePath = path.resolve(
+    process.env.HTTPS_CERT_PATH || path.join(__dirname, 'certs', 'localhost-cert.pem')
+);
+const privateKeyPath = path.resolve(
+    process.env.HTTPS_KEY_PATH || path.join(__dirname, 'certs', 'localhost-key.pem')
+);
 const publicDirectory = path.join(__dirname, 'public');
 const dataDirectory = path.join(__dirname, 'data');
 const inventoryPath = path.join(dataDirectory, 'rustdesk_inventory.json');
@@ -314,7 +321,7 @@ app.post('/api/unlock', (request, response) => {
     authenticatedSessions.set(sessionId, Date.now() + sessionLifetimeMs);
     response.setHeader(
         'Set-Cookie',
-        `endpoint_session=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${sessionLifetimeMs / 1000}`
+        `endpoint_session=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${sessionLifetimeMs / 1000}`
     );
     response.status(204).end();
 });
@@ -333,7 +340,13 @@ app.get('/api/endpoints', requireAuthentication, async (request, response) => {
 
 app.use(express.static(publicDirectory));
 
-app.listen(port, () => {
-    console.log(`Endpoint Manager is running at http://localhost:${port}`);
+const httpsServer = https.createServer({
+    cert: fs.readFileSync(certificatePath),
+    key: fs.readFileSync(privateKeyPath)
+}, app);
+
+httpsServer.listen(port, () => {
+    console.log(`Endpoint Manager is running at https://localhost:${port}`);
+    console.log(`HTTPS certificate: ${certificatePath}`);
     console.log(`RustDesk database: ${databasePath}`);
 });
