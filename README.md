@@ -57,7 +57,7 @@ matching records using their device name or IP address.
    To issue it for a specific internal DNS name:
 
    ```powershell
-   ./scripts/generate-self-signed-cert.ps1 -DnsName endpoints.oldmac.com.au
+   ./scripts/generate-self-signed-cert.ps1 -DnsName endpoints.example.internal
    ```
 
 5. Start the application:
