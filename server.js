@@ -31,8 +31,11 @@ const sessionLifetimeMs = 8 * 60 * 60 * 1000;
 const unlockAttempts = new Map();
 const unlockMaxAttempts = Math.max(Number(process.env.UNLOCK_MAX_ATTEMPTS) || 5, 1);
 const unlockWindowMs = Math.max(Number(process.env.UNLOCK_WINDOW_MINUTES) || 15, 1) * 60 * 1000;
+const inventoryRefreshMs = Math.max(Number(process.env.INVENTORY_REFRESH_MINUTES) || 30, 1) * 60 * 1000;
 let threatDownToken = null;
 let threatDownTokenExpiresAt = 0;
+let cachedInventory = null;
+let inventoryRefreshPromise = null;
 
 function parsePeerInfo(value) {
     if (!value) return {};
@@ -273,6 +276,7 @@ function parsePasscodeHash(value) {
         return null;
     }
 
+    
     try {
         return {
             cost,
@@ -382,6 +386,43 @@ async function generateInventory() {
     return payload;
 }
 
+function loadCachedInventory() {
+    if (!fs.existsSync(inventoryPath)) return;
+
+    try {
+        const payload = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
+        if (!Array.isArray(payload.endpoints)) {
+            throw new Error('snapshot does not contain an endpoints array');
+        }
+
+        cachedInventory = payload;
+        console.log(`Loaded cached inventory generated at ${payload.generatedAt || 'an unknown time'}.`);
+    } catch (error) {
+        console.error(`Unable to load cached inventory: ${error.message}`);
+    }
+}
+
+function refreshInventory() {
+    if (inventoryRefreshPromise) return inventoryRefreshPromise;
+
+    console.log('Refreshing endpoint inventory...');
+    inventoryRefreshPromise = generateInventory()
+        .then((payload) => {
+            cachedInventory = payload;
+            console.log(`Endpoint inventory refreshed (${payload.endpoints.length} endpoints).`);
+            return payload;
+        })
+        .catch((error) => {
+            console.error(`Endpoint inventory refresh failed: ${error.message}`);
+            throw error;
+        })
+        .finally(() => {
+            inventoryRefreshPromise = null;
+        });
+
+    return inventoryRefreshPromise;
+}
+
 app.use(express.json({ limit: '2kb' }));
 
 app.post('/api/unlock', async (request, response) => {
@@ -420,7 +461,9 @@ app.post('/api/unlock', async (request, response) => {
 
 app.get('/api/endpoints', requireAuthentication, async (request, response) => {
     try {
-        response.json(await generateInventory());
+        // This is normally an immediate memory read. It waits only on the
+        // first-ever start, before a persisted snapshot has been created.
+        response.json(cachedInventory || await refreshInventory());
     } catch (error) {
         console.error(error.message);
         response.status(500).json({
@@ -437,8 +480,17 @@ const httpsServer = https.createServer({
     key: fs.readFileSync(privateKeyPath)
 }, app);
 
+loadCachedInventory();
+
 httpsServer.listen(port, () => {
     console.log(`Endpoint Manager is running at https://localhost:${port}`);
     console.log(`HTTPS certificate: ${certificatePath}`);
     console.log(`RustDesk database: ${databasePath}`);
+    console.log(`Inventory refresh interval: ${inventoryRefreshMs / 60000} minutes`);
+
+    refreshInventory().catch(() => {});
+    const refreshTimer = setInterval(() => {
+        refreshInventory().catch(() => {});
+    }, inventoryRefreshMs);
+    refreshTimer.unref();
 });

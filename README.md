@@ -92,6 +92,7 @@ Configuration is loaded from `.env` in the project directory.
 | `HTTPS_KEY_PATH` | No | TLS private key path. Defaults to `certs/localhost-key.pem`. |
 | `UNLOCK_MAX_ATTEMPTS` | No | Failed unlock attempts allowed per client IP. Defaults to `5`. |
 | `UNLOCK_WINDOW_MINUTES` | No | Unlock rate-limit window in minutes. Defaults to `15`. |
+| `INVENTORY_REFRESH_MINUTES` | No | Background inventory refresh interval. Defaults to `30`. |
 | `RUSTDESK_DB_PATH` | For RustDesk | Absolute path to the RustDesk `db_v2.sqlite3` database. |
 | `THREATDOWN_CLIENT_ID` | For ThreatDown | ThreatDown OAuth client ID. |
 | `THREATDOWN_CLIENT_SECRET` | For ThreatDown | ThreatDown OAuth client secret. |
@@ -111,8 +112,11 @@ letter case). If those do not match, it compares the RustDesk IP address with
 the usable IP addresses reported by ThreatDown. Unmatched records from either
 source remain visible as separate endpoints.
 
-Every request to `/api/endpoints` refreshes the inventory. A generated snapshot
-is written to `data/rustdesk_inventory.json`; this file is ignored by Git.
+The server keeps the combined inventory in memory and refreshes it in the
+background every 30 minutes. A generated snapshot is written to
+`data/rustdesk_inventory.json` and loaded again at startup, so
+`/api/endpoints` can normally respond immediately even while a refresh is
+running. This file is ignored by Git.
 
 ## Security notes
 

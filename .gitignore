@@ -6,3 +6,4 @@ data/*.json
 *.sqlite3-wal
 certs/*.pem
 scripts/generate-self-signed-cert.ps1
+.agents
