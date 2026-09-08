@@ -78,8 +78,8 @@ input {
     /* padding: 20px; */
     overflow: hidden;
     background-color: #111827;
-    border-radius: 15px;
-    border: 2px solid #374151;
+    /* border-radius: 25px; */
+    border: 3px solid #374151;
     display: flex;
     justify-content: center;
     /* align-items: center; */
@@ -114,6 +114,15 @@ input {
 
 .endpoint-table tbody tr:not(.empty-row):hover {
     background-color: #263445;
+}
+
+.search-highlight {
+    padding: 1px 2px;
+    border-radius: 3px;
+    color: #111827;
+    background-color: #facc15;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
 }
 
 .endpoint-table .empty-row td {
