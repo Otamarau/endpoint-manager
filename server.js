@@ -7,6 +7,7 @@ const https = require('node:https');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { createWebexClient, enrichEndpoints } = require('./lib/webex');
 
 const app = express();
 app.set('trust proxy', 'loopback');
@@ -20,6 +21,9 @@ const privateKeyPath = path.resolve(
 const publicDirectory = path.join(__dirname, 'public');
 const dataDirectory = path.join(__dirname, 'data');
 const inventoryPath = path.join(dataDirectory, 'rustdesk_inventory.json');
+const webex = createWebexClient({
+    envFile: path.resolve(__dirname, process.env.WEBEX_ENV_FILE || '.env')
+});
 const databasePath = path.resolve(
     process.env.RUSTDESK_DB_PATH ||
     path.join(os.homedir(), 'rustdesk', 'data', 'db_v2.sqlite3')
@@ -371,12 +375,27 @@ async function generateInventory() {
         throw new Error(Object.values(sourceErrors).join(' | ') || 'No inventory sources returned endpoints.');
     }
 
+    let endpoints = mergeInventories(threatDownEndpoints, rustDeskEndpoints);
+    let webexPeople = [];
+    try {
+        if (webex.isConfigured()) {
+            webexPeople = await webex.readPeople();
+        } else if (process.env.WEBEX_ENV_FILE) {
+            sourceErrors.webex = 'Webex credentials file is missing or not configured.';
+        }
+    } catch (error) {
+        sourceErrors.webex = error.message;
+    }
+    endpoints = enrichEndpoints(endpoints, webexPeople);
+
     const payload = {
         generatedAt: new Date().toISOString(),
-        endpoints: mergeInventories(threatDownEndpoints, rustDeskEndpoints),
+        endpoints,
         sources: {
             threatDown: threatDownEndpoints.length,
-            rustDesk: rustDeskEndpoints.length
+            rustDesk: rustDeskEndpoints.length,
+            webex: webexPeople.length,
+            webexMatched: endpoints.filter(endpoint => endpoint.extension).length
         },
         sourceErrors
     };

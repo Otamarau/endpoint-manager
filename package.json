@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "hash-passcode": "node scripts/hash-passcode.js"
+    "hash-passcode": "node scripts/hash-passcode.js",
+    "test": "node --test",
+    "check:webex": "node scripts/check-webex.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",

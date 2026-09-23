@@ -1,6 +1,30 @@
 const tableBody = document.querySelector('#endpoint-table-body');
 const searchInput = document.querySelector('#endpoint-search');
+const sortButtons = document.querySelectorAll('.column-sort');
+const sortCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 let endpoints = [];
+let sortColumn = null;
+let sortDirection = 'ascending';
+
+function compareEndpoints(first, second) {
+    const firstValue = String(first[sortColumn] ?? '').trim();
+    const secondValue = String(second[sortColumn] ?? '').trim();
+    // Keep missing values at the bottom in either direction.
+    if (!firstValue || !secondValue) return Number(!firstValue) - Number(!secondValue);
+    return sortCollator.compare(firstValue, secondValue) * (sortDirection === 'ascending' ? 1 : -1);
+}
+
+function updateSortHeadings() {
+    for (const button of sortButtons) {
+        const active = button.dataset.sort === sortColumn;
+        button.closest('th').setAttribute('aria-sort', active ? sortDirection : 'none');
+        button.querySelector('.sort-indicator').textContent = active
+            ? (sortDirection === 'ascending' ? '↑' : '↓') : '↕';
+        const nextDirection = active && sortDirection === 'ascending' ? 'descending' : 'ascending';
+        button.setAttribute('aria-label', `${button.dataset.label}: sort ${nextDirection}`);
+        button.title = `Sort ${nextDirection}`;
+    }
+}
 
 function normalizeSearchValue(value) {
     return String(value ?? '').trim().toLowerCase();
@@ -46,7 +70,8 @@ function endpointMatchScore(endpoint, searchTerm) {
         endpoint.username,
         endpoint.deviceName,
         endpoint.ip,
-        endpoint.rustdeskId
+        endpoint.rustdeskId,
+        endpoint.extension
     ];
 
     return Math.min(...searchableColumns.map((value) => fieldMatchScore(value, searchTerm)));
@@ -117,7 +142,9 @@ function renderEndpoints(filter = '') {
                 first.score - second.score || first.originalIndex - second.originalIndex
             )
             .map(({ endpoint }) => endpoint)
-        : endpoints;
+        : [...endpoints];
+
+    if (sortColumn) visibleEndpoints.sort(compareEndpoints);
 
     tableBody.replaceChildren();
 
@@ -125,7 +152,7 @@ function renderEndpoints(filter = '') {
         const row = document.createElement('tr');
         row.className = 'empty-row';
         const cell = document.createElement('td');
-        cell.colSpan = 4;
+        cell.colSpan = 5;
         cell.textContent = 'No endpoints to display.';
         row.append(cell);
         tableBody.append(row);
@@ -136,7 +163,8 @@ function renderEndpoints(filter = '') {
         ['Username', 'username'],
         ['Device name', 'deviceName'],
         ['IP', 'ip'],
-        ['RustDesk ID', 'rustdeskId']
+        ['RustDesk ID', 'rustdeskId'],
+        ['Extension', 'extension']
     ];
 
     for (const endpoint of visibleEndpoints) {
@@ -193,13 +221,18 @@ async function loadEndpoints() {
         }
 
         endpoints = payload.endpoints;
+        const status = document.querySelector('#inventory-status');
+        status.textContent = payload.sourceErrors?.webex
+            ? 'Phone extensions are unavailable. The Webex connection needs attention.'
+            : '';
+        status.hidden = !status.textContent;
         renderEndpoints(searchInput.value);
     } catch (error) {
         tableBody.innerHTML = '';
         const row = document.createElement('tr');
         row.className = 'empty-row';
         const cell = document.createElement('td');
-        cell.colSpan = 4;
+        cell.colSpan = 5;
         cell.textContent = `Could not load endpoints: ${error.message}`;
         row.append(cell);
         tableBody.append(row);
@@ -207,4 +240,15 @@ async function loadEndpoints() {
 }
 
 searchInput.addEventListener('input', () => renderEndpoints(searchInput.value));
+for (const button of sortButtons) {
+    button.dataset.label = button.firstChild.textContent.trim();
+    button.addEventListener('click', () => {
+        sortDirection = sortColumn === button.dataset.sort && sortDirection === 'ascending'
+            ? 'descending' : 'ascending';
+        sortColumn = button.dataset.sort;
+        updateSortHeadings();
+        renderEndpoints(searchInput.value);
+    });
+}
+updateSortHeadings();
 loadEndpoints();

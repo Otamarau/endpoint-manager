@@ -16,18 +16,20 @@
         </nav>
         <div id="content-wrapper">
             <div id="endpoint-wrapper">
+                <p id="inventory-status" role="status" hidden></p>
                 <table class="endpoint-table">
                     <thead>
                         <tr>
-                            <th scope="col">Username</th>
-                            <th scope="col">Device name</th>
-                            <th scope="col">IP</th>
-                            <th scope="col">RustDesk ID</th>
+                            <th scope="col" aria-sort="none"><button type="button" class="column-sort" data-sort="username">Username <span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+                            <th scope="col" aria-sort="none"><button type="button" class="column-sort" data-sort="deviceName">Device name <span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+                            <th scope="col" aria-sort="none"><button type="button" class="column-sort" data-sort="ip">IP <span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+                            <th scope="col" aria-sort="none"><button type="button" class="column-sort" data-sort="rustdeskId">RustDesk ID <span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+                            <th scope="col" aria-sort="none"><button type="button" class="column-sort" data-sort="extension">Extension <span class="sort-indicator" aria-hidden="true">↕</span></button></th>
                         </tr>
                     </thead>
                     <tbody id="endpoint-table-body">
                         <tr class="empty-row">
-                            <td colspan="4">Loading endpoints...</td>
+                            <td colspan="5">Loading endpoints...</td>
                         </tr>
                     </tbody>
                 </table>

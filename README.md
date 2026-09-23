@@ -10,6 +10,7 @@ matching records using their device name or IP address.
 - Combines RustDesk and ThreatDown endpoint inventories
 - Matches records by normalized device name or IP address
 - Displays usernames, device names, IP addresses, and RustDesk IDs
+- Displays searchable Webex phone extensions matched to endpoint usernames
 - Includes typo-tolerant search and responsive mobile styling
 - Reads the RustDesk database in read-only mode
 - Protects the inventory behind a configurable passcode
@@ -97,6 +98,10 @@ Configuration is loaded from `.env` in the project directory.
 | `THREATDOWN_CLIENT_ID` | For ThreatDown | ThreatDown OAuth client ID. |
 | `THREATDOWN_CLIENT_SECRET` | For ThreatDown | ThreatDown OAuth client secret. |
 | `THREATDOWN_ACCOUNT_ID` | For ThreatDown | ThreatDown account ID sent with API requests. |
+| `WEBEX_ENV_FILE` | No | Webex credentials file, relative to the project directory or absolute. Defaults to the project's `.env`. |
+| `WEBEX_CLIENT_ID` | For Webex | Service App client ID in the Webex credentials file. |
+| `WEBEX_CLIENT_SECRET` | For Webex | Service App client secret in the Webex credentials file. |
+| `WEBEX_REFRESH_TOKEN` | For Webex | Refresh token in the Webex credentials file; renewed tokens are saved here automatically. |
 
 At least one inventory source must be correctly configured and available. If
 `RUSTDESK_DB_PATH` is omitted, the application looks for
@@ -111,6 +116,34 @@ Endpoint Manager first compares normalized device names (ignoring domains and
 letter case). If those do not match, it compares the RustDesk IP address with
 the usable IP addresses reported by ThreatDown. Unmatched records from either
 source remain visible as separate endpoints.
+
+### Webex phone extensions
+
+To reuse the adjacent Webex connection, add
+`WEBEX_ENV_FILE=../webex_api_testing/.env` to Endpoint Manager's `.env`.
+For a separate deployment, provision a credentials file on that server and set
+`WEBEX_ENV_FILE` to its path, or put the three `WEBEX_*` credentials in the
+project's `.env`. The credentials file must be writable for token renewal.
+Use one running token-renewal process per credentials file; avoid running the
+standalone Webex test script while Endpoint Manager is refreshing.
+
+The integration uses Webex's [List People API](https://developer.webex.com/admin/docs/api/v1/people/list-people)
+with the existing Service App's people-read permission. It follows all pages and
+reads `extension` or `phoneNumbers` entries of type `work_extension`.
+Full email usernames require an exact email match. Windows usernames have their
+domain prefix removed and are compared against email aliases and full names,
+ignoring case, spaces, periods, underscores and hyphens. Only unique matches are
+used; ambiguous or unmatched accounts show a dash. Extensions remain strings
+to preserve leading zeroes. Webex users without a matching device do not add
+extra endpoint rows.
+
+Extensions refresh with the inventory. A Webex failure leaves the device list
+available with blank extensions and a visible connection warning. Webex counts
+and errors are also included in the authenticated `/api/endpoints` response.
+Run `npm run check:webex` while the server is stopped to verify the connection
+and see match counts against the existing snapshot without printing credentials
+or changing the inventory. This check renews and saves the refresh token.
+Run `npm test` for the matching and API-client checks.
 
 The server keeps the combined inventory in memory and refreshes it in the
 background every 30 minutes. A generated snapshot is written to

@@ -81,8 +81,15 @@ input {
     /* border-radius: 25px; */
     border: 3px solid #374151;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     /* align-items: center; */
+}
+
+#inventory-status {
+    margin: 0;
+    padding: 12px;
+    color: #facc15;
 }
 
 .endpoint-table {
@@ -103,9 +110,41 @@ input {
 }
 
 .endpoint-table th {
+    padding: 0;
     background-color: #172033;
     color: #fff;
     font-size: 15px;
+}
+
+.column-sort {
+    width: 100%;
+    padding: 14px 12px;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.column-sort:hover {
+    background-color: #263445;
+}
+
+.column-sort:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: -4px;
+}
+
+.sort-indicator {
+    display: inline-block;
+    width: 1em;
+    color: #93c5fd;
+}
+
+.endpoint-table th[aria-sort="ascending"],
+.endpoint-table th[aria-sort="descending"] {
+    background-color: #263445;
 }
 
 .endpoint-table tbody tr:nth-child(even) {
@@ -165,8 +204,20 @@ input {
         width: 100%;
     }
 
-    .endpoint-table thead {
-        display: none;
+    .endpoint-table thead tr {
+        display: flex;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+    }
+
+    .endpoint-table thead th {
+        flex: 1 1 auto;
+        width: auto;
+    }
+
+    .column-sort {
+        min-height: 44px;
+        padding: 10px;
     }
 
     .endpoint-table tbody tr:not(.empty-row) {
