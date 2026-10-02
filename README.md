@@ -3,7 +3,8 @@
 Endpoint Manager is a small, self-hosted web inventory for viewing RustDesk and
 ThreatDown endpoints in one searchable table. It reads RustDesk peer data from a
 local SQLite database, retrieves devices from the ThreatDown API, and combines
-matching records using their device name or IP address.
+matching records using their device name or IP address. An optional Webex
+integration adds phone extensions by matching Webex people to endpoint usernames.
 
 ## Features
 
@@ -11,6 +12,9 @@ matching records using their device name or IP address.
 - Matches records by normalized device name or IP address
 - Displays usernames, device names, IP addresses, and RustDesk IDs
 - Displays searchable Webex phone extensions matched to endpoint usernames
+- Sorts columns, including phone extensions, in ascending or descending order
+- Refreshes devices and Webex extensions on demand using the **Refresh** button
+- Renews Webex access tokens and saves replacement refresh tokens automatically
 - Includes typo-tolerant search and responsive mobile styling
 - Reads the RustDesk database in read-only mode
 - Protects the inventory behind a configurable passcode
@@ -21,6 +25,8 @@ matching records using their device name or IP address.
 - Node.js 20 or newer
 - A RustDesk SQLite database, ThreatDown API credentials, or both
 - Network access to `https://api.threatdown.com` when using ThreatDown
+- For optional Webex extensions: Service App credentials with permission to read
+  people, and network access to `https://webexapis.com`
 
 ## Installation
 
@@ -117,39 +123,95 @@ letter case). If those do not match, it compares the RustDesk IP address with
 the usable IP addresses reported by ThreatDown. Unmatched records from either
 source remain visible as separate endpoints.
 
-### Webex phone extensions
+## Webex phone extensions
 
-To reuse the adjacent Webex connection, add
-`WEBEX_ENV_FILE=../webex_api_testing/.env` to Endpoint Manager's `.env`.
-For a separate deployment, provision a credentials file on that server and set
-`WEBEX_ENV_FILE` to its path, or put the three `WEBEX_*` credentials in the
-project's `.env`. The credentials file must be writable for token renewal.
-Use one running token-renewal process per credentials file; avoid running the
-standalone Webex test script while Endpoint Manager is refreshing.
+Webex adds an **Extension** column to the combined device inventory. You can
+search for an extension or click its column heading to sort it. Webex is optional;
+RustDesk or ThreatDown still supplies the endpoint rows.
 
-The integration uses Webex's [List People API](https://developer.webex.com/admin/docs/api/v1/people/list-people)
-with the existing Service App's people-read permission. It follows all pages and
-reads `extension` or `phoneNumbers` entries of type `work_extension`.
+### Setup
+
+1. Add your Webex Service App credentials to the project's `.env`:
+
+   ```dotenv
+   WEBEX_CLIENT_ID=your-service-app-client-id
+   WEBEX_CLIENT_SECRET=your-service-app-client-secret
+   WEBEX_REFRESH_TOKEN=your-refresh-token
+   ```
+
+   To keep credentials in a separate file, put those three settings in that file
+   and set its path in Endpoint Manager's `.env`:
+
+   ```dotenv
+   WEBEX_ENV_FILE=/absolute/path/to/webex.env
+   ```
+
+   Relative paths resolve from the project directory. For example,
+   `WEBEX_ENV_FILE=../webex_api_testing/.env` reuses an adjacent Webex connection.
+   All three credentials are read from the selected file.
+
+2. Ensure the account running Endpoint Manager can read and update the credentials
+   file and write to its parent directory. Token renewal saves replacement
+   refresh tokens by creating a temporary file and replacing the credentials file.
+   Use one running token-renewal process per credentials file.
+
+3. With the server stopped, run `npm run check:webex` to verify the connection.
+   Then start the server with `npm start`, or restart your deployed service.
+
+### Matching and displayed extensions
+
+The client requests `/v1/people` from Webex, follows all result pages, and reads
+`extension` or `phoneNumbers` entries of type `work_extension`.
 Full email usernames require an exact email match. Windows usernames have their
 domain prefix removed and are compared against email aliases and full names,
 ignoring case, spaces, periods, underscores and hyphens. Only unique matches are
 used; ambiguous or unmatched accounts show a dash. Extensions remain strings
-to preserve leading zeroes. Webex users without a matching device do not add
-extra endpoint rows.
+to preserve leading zeroes. Multiple distinct extensions appear separated by
+commas. Webex users without a matching device do not add extra endpoint rows.
 
-Extensions refresh with the inventory. A Webex failure leaves the device list
+For a Webex person named `Jane Smith`, with email `jane.smith@example.com` and
+extension `0012`:
+
+| Endpoint username | Displayed extension |
+| --- | --- |
+| `jane.smith@example.com` | `0012` |
+| `AzureAD\JaneSmith` | `0012`, if the name identifies only one Webex person |
+| `DOMAIN\jane.smith` | `0012`, if the alias identifies only one Webex person |
+| `jane.smith@another.example` | Dash, unless that exact email exists in Webex |
+
+### Refresh and connection checks
+
+Extensions refresh with the inventory at startup, on the configured background
+interval, and when you click **Refresh**. The button shows **Refreshing…** while
+the request runs, then updates the table using the current search and sort settings.
+A Webex failure leaves the device list
 available with blank extensions and a visible connection warning. Webex counts
-and errors are also included in the authenticated `/api/endpoints` response.
-Run `npm run check:webex` while the server is stopped to verify the connection
-and see match counts against the existing snapshot without printing credentials
-or changing the inventory. This check renews and saves the refresh token.
-Run `npm test` for the matching and API-client checks.
+and errors are also included in the authenticated `/api/endpoints` response as
+`sources.webex`, `sources.webexMatched`, and `sourceErrors.webex`.
+
+Run the connection check while the server is stopped to avoid concurrent token
+renewal:
+
+```sh
+npm run check:webex
+```
+
+It reports the number of Webex people, people with extensions, cached endpoints,
+and endpoints that can be matched to extensions. It uses the existing inventory
+snapshot without changing it or printing credentials. If no snapshot exists,
+the cached endpoint and endpoint match counts are zero. **This check can renew
+and save the refresh token.** Run `npm test` for the matching and API-client checks
+using test fixtures instead of a live Webex connection.
+
+## Inventory cache
 
 The server keeps the combined inventory in memory and refreshes it in the
 background every 30 minutes. A generated snapshot is written to
 `data/rustdesk_inventory.json` and loaded again at startup, so
 `/api/endpoints` can normally respond immediately even while a refresh is
-running. This file is ignored by Git.
+running. This file is ignored by Git. Set `INVENTORY_REFRESH_MINUTES` to change
+the interval, or click **Refresh** to request an immediate update through the
+authenticated `POST /api/endpoints/refresh` route.
 
 ## Security notes
 
@@ -168,10 +230,13 @@ included `.gitignore` excludes them.
 
 ```text
 public/                 Browser interface
-  scripts/script.js     Inventory rendering and search
+  scripts/script.js     Inventory rendering, search, sorting, and refresh
   styles/styles.css     Responsive styling
 server.js               Express server and inventory integrations
-scripts/                Certificate generation utility
+lib/webex.js            Webex authentication, people lookup, and extension matching
+scripts/                Certificate and passcode utilities
+  check-webex.js        Webex connection and extension-match diagnostics
+test/                   Inventory and Webex integration checks
 .env.example            Configuration template
 ```
 
@@ -185,3 +250,12 @@ scripts/                Certificate generation utility
   or rely on a valid RustDesk database as the available inventory source.
 - **No endpoints load**: Check the server output. The response fails only when
   neither source returns any endpoints.
+- **Extensions show a dash without a connection warning**: Check that Webex is
+  configured, the person has an extension, and the endpoint username matches
+  exactly one Webex person. Duplicate names are deliberately left unmatched.
+- **Webex connection warning or HTTP 401/403**: Check the Service App credentials,
+  refresh token, and people-read permission. Stop the server and run
+  `npm run check:webex` to inspect the connection, then restart it.
+- **Webex token cannot be saved**: Check write access to both the credentials
+  file and its parent directory. Ensure another server or diagnostic process is
+  not renewing tokens from the same file.
