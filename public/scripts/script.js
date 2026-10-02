@@ -1,5 +1,6 @@
 const tableBody = document.querySelector('#endpoint-table-body');
 const searchInput = document.querySelector('#endpoint-search');
+const refreshButton = document.querySelector('#refresh-button');
 const sortButtons = document.querySelectorAll('.column-sort');
 const sortCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 let endpoints = [];
@@ -210,10 +211,20 @@ async function unlockSite() {
     }
 }
 
-async function loadEndpoints() {
+async function loadEndpoints(refresh = false) {
+    if (refreshButton.disabled) return;
+    refreshButton.disabled = true;
+    refreshButton.textContent = refresh ? 'Refreshing…' : 'Loading…';
+    const status = document.querySelector('#inventory-status');
     try {
-        await unlockSite();
-        const response = await fetch('/api/endpoints');
+        if (!refresh) await unlockSite();
+        const url = refresh ? '/api/endpoints/refresh' : '/api/endpoints';
+        const options = { method: refresh ? 'POST' : 'GET', cache: 'no-store' };
+        let response = await fetch(url, options);
+        if (response.status === 401) {
+            await unlockSite();
+            response = await fetch(url, options);
+        }
         const payload = await response.json();
 
         if (!response.ok) {
@@ -221,13 +232,17 @@ async function loadEndpoints() {
         }
 
         endpoints = payload.endpoints;
-        const status = document.querySelector('#inventory-status');
         status.textContent = payload.sourceErrors?.webex
             ? 'Phone extensions are unavailable. The Webex connection needs attention.'
             : '';
         status.hidden = !status.textContent;
         renderEndpoints(searchInput.value);
     } catch (error) {
+        if (refresh) {
+            status.textContent = `Could not refresh endpoints: ${error.message}`;
+            status.hidden = false;
+            return;
+        }
         tableBody.innerHTML = '';
         const row = document.createElement('tr');
         row.className = 'empty-row';
@@ -236,9 +251,13 @@ async function loadEndpoints() {
         cell.textContent = `Could not load endpoints: ${error.message}`;
         row.append(cell);
         tableBody.append(row);
+    } finally {
+        refreshButton.disabled = false;
+        refreshButton.textContent = 'Refresh';
     }
 }
 
+refreshButton.addEventListener('click', () => loadEndpoints(true));
 searchInput.addEventListener('input', () => renderEndpoints(searchInput.value));
 for (const button of sortButtons) {
     button.dataset.label = button.firstChild.textContent.trim();

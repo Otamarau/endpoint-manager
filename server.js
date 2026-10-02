@@ -492,6 +492,17 @@ app.get('/api/endpoints', requireAuthentication, async (request, response) => {
     }
 });
 
+app.post('/api/endpoints/refresh', requireAuthentication, async (request, response) => {
+    try {
+        response.json(await refreshInventory());
+    } catch (error) {
+        response.status(500).json({
+            error: 'Unable to refresh the endpoint inventory.',
+            details: error.message
+        });
+    }
+});
+
 app.use(express.static(publicDirectory));
 
 const httpsServer = https.createServer({
