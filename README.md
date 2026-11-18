@@ -118,10 +118,19 @@ RustDesk Server Pro: `id`, `guid`, `uuid`, `created_at`, `info`, and `note`.
 
 ## How inventory merging works
 
-Endpoint Manager first compares normalized device names (ignoring domains and
-letter case). If those do not match, it compares the RustDesk IP address with
-the usable IP addresses reported by ThreatDown. Unmatched records from either
-source remain visible as separate endpoints.
+Endpoint Manager first applies verified assignments from the optional
+`data/rustdesk_mappings.json` file, an object mapping stable ThreatDown device IDs
+to RustDesk ID strings. For example: `{"threatdown-device-id": "138935363"}`.
+Each RustDesk ID can be assigned only once. These assignments reserve the IDs
+even when a device is temporarily missing. Refresh the inventory after editing.
+
+Automatic matching then compares normalized device names (ignoring domains and
+letter case), requiring a unique match on both sides. IP fallback is allowed only
+when exactly one record on each side shares the address and their names do not
+conflict. Shared or stale addresses can be ambiguous, so unmatched records remain
+visible separately instead of receiving a guessed RustDesk ID. Use a verified
+assignment for those devices; the mappings file persists independently of the
+generated inventory snapshot and is ignored by Git.
 
 ## Webex phone extensions
 

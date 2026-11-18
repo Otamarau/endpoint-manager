@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { createWebexClient, enrichEndpoints } = require('./lib/webex');
+const { mergeInventories } = require('./lib/inventory');
 
 const app = express();
 app.set('trust proxy', 'loopback');
@@ -98,10 +99,6 @@ function readInventory() {
     } finally {
         database.close();
     }
-}
-
-function normalizeDeviceName(value) {
-    return String(value || '').trim().split('.')[0].toLowerCase();
 }
 
 function normalizeIp(value) {
@@ -215,39 +212,6 @@ async function readThreatDownInventory() {
             source: 'ThreatDown'
         };
     });
-}
-
-function mergeInventories(threatDownEndpoints, rustDeskEndpoints) {
-    const remainingRustDesk = [...rustDeskEndpoints];
-
-    const merged = threatDownEndpoints.map((threatDownEndpoint) => {
-        const deviceName = normalizeDeviceName(threatDownEndpoint.deviceName);
-        const threatDownIps = new Set(threatDownEndpoint.ips.map(normalizeIp));
-        const matchIndex = remainingRustDesk.findIndex((rustDeskEndpoint) => {
-            const rustDeskName = normalizeDeviceName(rustDeskEndpoint.deviceName);
-            const rustDeskIp = normalizeIp(rustDeskEndpoint.ip);
-            return (deviceName && rustDeskName === deviceName) ||
-                (rustDeskIp && threatDownIps.has(rustDeskIp));
-        });
-
-        if (matchIndex === -1) return threatDownEndpoint;
-
-        const [rustDeskEndpoint] = remainingRustDesk.splice(matchIndex, 1);
-        return {
-            ...threatDownEndpoint,
-            username: threatDownEndpoint.username || rustDeskEndpoint.username,
-            deviceName: threatDownEndpoint.deviceName || rustDeskEndpoint.deviceName,
-            ip: threatDownEndpoint.ip || rustDeskEndpoint.ip,
-            rustdeskId: rustDeskEndpoint.rustdeskId,
-            rustdesk: rustDeskEndpoint,
-            source: 'ThreatDown + RustDesk'
-        };
-    });
-
-    return merged.concat(remainingRustDesk.map((endpoint) => ({
-        ...endpoint,
-        source: 'RustDesk'
-    })));
 }
 
 function readCookie(request, name) {
@@ -375,7 +339,10 @@ async function generateInventory() {
         throw new Error(Object.values(sourceErrors).join(' | ') || 'No inventory sources returned endpoints.');
     }
 
-    let endpoints = mergeInventories(threatDownEndpoints, rustDeskEndpoints);
+    const mappingsPath = path.join(dataDirectory, 'rustdesk_mappings.json');
+    const mappings = fs.existsSync(mappingsPath)
+        ? JSON.parse(fs.readFileSync(mappingsPath, 'utf8')) : {};
+    let endpoints = mergeInventories(threatDownEndpoints, rustDeskEndpoints, mappings);
     let webexPeople = [];
     try {
         if (webex.isConfigured()) {
